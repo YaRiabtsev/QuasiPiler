@@ -33,13 +33,13 @@ elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
 endif ()
 
 add_library(qpiler_lib
-        src/parser.cpp
+        src/reader.cpp
 )
 
 target_include_directories(qpiler_lib PUBLIC include)
 
 target_precompile_headers(qpiler_lib PRIVATE
-        include/parser.hpp
+        include/reader.hpp
 )
 
 set_target_properties(qpiler_lib PROPERTIES UNITY_BUILD ON)
