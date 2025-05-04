@@ -34,12 +34,14 @@ endif ()
 
 add_library(qpiler_lib
         src/reader.cpp
+        src/lexer.cpp
 )
 
 target_include_directories(qpiler_lib PUBLIC include)
 
 target_precompile_headers(qpiler_lib PRIVATE
         include/reader.hpp
+        include/lexer.hpp
 )
 
 set_target_properties(qpiler_lib PROPERTIES UNITY_BUILD ON)
@@ -60,7 +62,8 @@ if (BUILD_TESTS)
 
     add_executable(unit_tests
             tests/main.cpp
-#            tests/parser.cpp
+            tests/reader_tests.cpp
+            tests/lexer_tests.cpp
     )
 
     target_link_libraries(unit_tests

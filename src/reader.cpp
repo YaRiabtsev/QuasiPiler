@@ -24,10 +24,9 @@
 
 #include "reader.hpp"
 
-#include <algorithm>
 #include <cassert>
 
-token reader::parse_number(std::string& number) {
+token_kind reader::read_number(std::string& number) {
     if (!number.empty()) {
         number.clear();
     }
@@ -74,29 +73,29 @@ token reader::parse_number(std::string& number) {
         }
     }
     assert(!number.empty() && "number is not empty");
-    return is_float ? token::floating : token::integer;
+    return is_float ? token_kind::floating : token_kind::integer;
 }
 
 std::runtime_error reader::throw_message(
     const std::string& message, const std::source_location location
 ) const {
     std::ostringstream oss;
-    oss << "[Parser-Error] " << message << ". ";
+    oss << "[Reader-Error] " << message << ". ";
 #ifndef NDEBUG
     if (!ifs.is_open()) {
-        oss << "No input stream open. ";
+        oss << "no input stream open. ";
     }
     if (!valid()) {
-        oss << "Position is out of range. Line: " << (line + 1)
-            << ", position: " << (col + 1) << " exceeds available input. ";
+        oss << "position is out of range. line: " << (line + 1)
+            << ", column: " << (col + 1) << " exceeds available input. ";
     } else {
         const char current_char = peek();
-        oss << "Character '" << current_char
-            << "' (ASCII: " << static_cast<int>(current_char)
-            << ") was found at line " << (line + 1) << ", position "
-            << (col + 1) << ". ";
+        oss << "character '" << current_char
+            << "' (ASCII: " << static_cast<unsigned>(current_char)
+            << ") was found at line " << (line + 1) << ", column " << (col + 1)
+            << ". ";
     }
-    oss << "In file: " << location.file_name() << '(' << location.line() << ':'
+    oss << "in file: " << location.file_name() << '(' << location.line() << ':'
         << location.column() << ") `" << location.function_name() << "`";
     oss << std::endl << buffer;
 #endif
@@ -111,7 +110,7 @@ reader::reader(const std::filesystem::path& path, std::streamsize buffer_size)
     }
     ifs.seekg(0, std::ios::beg);
     offset = ifs.tellg();
-    read_buffer();
+    refill_buffer();
 }
 
 reader::reader(std::string& str)
@@ -128,9 +127,7 @@ reader::~reader() {
     }
 }
 
-bool reader::valid() const {
-    return shift >= 0 && shift < static_cast<int>(buffer.size());
-}
+bool reader::valid() const { return !buffer.empty() && shift < buffer.size(); }
 
 char reader::peek() const { return buffer[shift]; }
 
@@ -141,25 +138,27 @@ char reader::get() {
 }
 
 void reader::next() {
-    assert(shift >= 0 && "stream is not empty");
+    assert(!buffer.empty() && "stream is not empty");
     ++shift;
-    if (shift >= static_cast<int>(buffer.size())) {
-        read_buffer();
+    ++col;
+    if (shift >= buffer.size()) {
+        refill_buffer();
     }
 }
 
-void reader::read_buffer() {
+void reader::refill_buffer() {
     if (ifs.eof()) {
         return;
     }
     offset = ifs.tellg();
     ifs.read(buffer.data(), max_buffer_size);
     if (const auto read_bytes = ifs.gcount(); read_bytes < max_buffer_size) {
-        buffer.resize(read_bytes);
+        buffer.resize(static_cast<size_t>(read_bytes));
     }
+    shift = 0;
 }
 
-void reader::parse_whitespace(std::string& word) {
+void reader::read_whitespace(std::string& word) {
     if (!word.empty()) {
         word.clear();
     }
@@ -172,7 +171,7 @@ void reader::parse_whitespace(std::string& word) {
     }
 }
 
-void reader::parse_keyword(std::string& word) {
+void reader::read_keyword(std::string& word) {
     assert(
         valid() && (std::isalpha(peek()) || peek() == '_')
         && "expected keyword starting with a letter"
@@ -185,7 +184,7 @@ void reader::parse_keyword(std::string& word) {
     } while (valid() && (std::isalnum(peek()) || peek() == '_'));
 }
 
-void reader::parse_string(std::string& value) {
+void reader::read_string(std::string& value) {
     assert(
         valid() && (peek() == '"' || peek() == '\'') && "expected opening quote"
     );
@@ -265,48 +264,64 @@ void reader::jump_to(
         throw throw_message("position is out of range");
     }
     if (!ifs.is_open()) {
-        if (position > buffer.size()) {
+        shift = static_cast<size_t>(position);
+        if (shift > buffer.size()) {
             throw throw_message("position is out of range");
         }
-        shift = static_cast<int>(position);
     } else {
         ifs.seekg(position, std::ios::beg);
-        read_buffer();
+        refill_buffer();
     }
     this->line = line;
     this->col = col;
 }
 
-std::tuple<token, int, int> reader::read_lexeme(std::string& lexeme) {
+token reader::next_token(std::string& lexeme) {
     if (!lexeme.empty()) {
         lexeme.clear();
     }
     const std::pair position = { line, col };
-    auto t = token::special_character;
+    auto t = token_kind::special_character;
     if (!valid()) {
-        t = token::eof;
+        t = token_kind::eof;
     } else {
         if (peek() == '(' || peek() == '[' || peek() == '{') {
-            t = token::open_bracket;
+            t = token_kind::open_bracket;
         } else if (peek() == ')' || peek() == ']' || peek() == '}') {
-            t = token::close_bracket;
+            t = token_kind::close_bracket;
         } else if (peek() == ',' || peek() == ';' || peek() == ':') {
-            t = token::separator;
+            t = token_kind::separator;
         } else if (std::isalpha(peek()) || peek() == '_') {
-            parse_keyword(lexeme);
-            t = token::keyword;
+            read_keyword(lexeme);
+            t = token_kind::keyword;
         } else if (std::isdigit(peek())) {
-            t = parse_number(lexeme);
+            t = read_number(lexeme);
         } else if (peek() == '\'' || peek() == '"') {
-            parse_string(lexeme);
-            t = token::string;
+            read_string(lexeme);
+            t = token_kind::string;
         } else if (peek() == ' ' || peek() == '\t' || peek() == '\n') {
-            parse_whitespace(lexeme);
-            t = token::whitespace;
+            read_whitespace(lexeme);
+            t = token_kind::whitespace;
         }
         if (lexeme.empty()) {
             lexeme = get();
         }
     }
     return { t, position.first, position.second };
+}
+
+std::pair<int, int> reader::readln(std::string& data, size_t max_size) {
+    if (!data.empty()) {
+        data.clear();
+    }
+    const std::pair position = { line, col };
+    while (valid() && data.size() < max_size) {
+        data += peek();
+        if (get() == '\n') {
+            ++line;
+            col = -1;
+            break;
+        }
+    }
+    return position;
 }

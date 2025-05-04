@@ -23,5 +23,3 @@
  */
 
 #include "lexer.hpp"
-
-lexer::lexer(reader& r) : rd(r) { }
