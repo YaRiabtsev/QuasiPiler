@@ -13,6 +13,7 @@ pace—“Documentation and Contributing” is a friendly suggestion, not Martin
 ### Requirements
 
 * **C++20** compiler
+* **cxxopts**: for command line options
 * **GTest**: for unit tests
 * **lcov**: for code coverage reports
 * **doxygen** and **graphviz**: for generating documentation

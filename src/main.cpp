@@ -27,7 +27,7 @@
 
 #include "lexer.hpp"
 
-int main(const int argc, char* argv[]) {
+int main(const int argc, char** argv) {
     std::filesystem::path path;
     try {
         cxxopts::Options options(

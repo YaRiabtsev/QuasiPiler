@@ -147,7 +147,7 @@ void reader::next() {
 }
 
 void reader::refill_buffer() {
-    if (ifs.eof()) {
+    if (!ifs.is_open() || ifs.eof()) {
         return;
     }
     offset = ifs.tellg();
@@ -226,9 +226,7 @@ void reader::read_string(std::string& value) {
                 for (int i = 0; i < 4; ++i) {
                     next();
                     if (!valid() || !isxdigit(peek())) {
-                        throw throw_message(
-                            "invalid Unicode escape sequence in JSON string"
-                        );
+                        throw throw_message("invalid Unicode escape sequence");
                     }
                     hex += peek();
                 }
@@ -239,12 +237,12 @@ void reader::read_string(std::string& value) {
                 break;
             }
             default:
-                throw throw_message("invalid escape sequence in JSON string");
+                throw throw_message("invalid escape sequence");
             }
             is_backslash = false;
         } else if (current == '\\') {
             is_backslash = true;
-        } else if (current == '\"') {
+        } else if (current == quote) {
             break;
         } else {
             value += current;
@@ -252,7 +250,7 @@ void reader::read_string(std::string& value) {
         next();
     } while (valid());
     if (!valid() || peek() != quote) {
-        throw throw_message("invalid JSON string: Missing closing quote");
+        throw throw_message("missing closing quote");
     }
     next();
 }
@@ -299,7 +297,7 @@ token reader::next_token(std::string& lexeme) {
         } else if (peek() == '\'' || peek() == '"') {
             read_string(lexeme);
             t = token_kind::string;
-        } else if (peek() == ' ' || peek() == '\t' || peek() == '\n') {
+        } else if (std::isspace(peek())) {
             read_whitespace(lexeme);
             t = token_kind::whitespace;
         }
@@ -319,7 +317,7 @@ std::pair<int, int> reader::readln(std::string& data, size_t max_size) {
         data += peek();
         if (get() == '\n') {
             ++line;
-            col = -1;
+            col = 0;
             break;
         }
     }
