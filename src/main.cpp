@@ -1,5 +1,5 @@
 /*
-* The MIT License (MIT)
+ * The MIT License (MIT)
  *
  * Copyright (c) 2025 Yaroslav Riabtsev <yaroslav.riabtsev@rwth-aachen.de>
  *
@@ -22,9 +22,34 @@
  * SOFTWARE.
  */
 
+#include <cxxopts.hpp>
 #include <iostream>
 
-int main() {
-    std::cout << "Hello, World!" << std::endl;
+#include "lexer.hpp"
+
+int main(const int argc, char* argv[]) {
+    std::filesystem::path path;
+    try {
+        cxxopts::Options options(
+            "QuasiPiler", "the Hunchback Dragon of Compilers"
+        );
+        options
+            .add_options()("i,input", "Input file", cxxopts::value<std::filesystem::path>(path))(
+                "h,help", "show help"
+            );
+        options.parse_positional({ "input" });
+        if (const auto result = options.parse(argc, argv);
+            result.count("help")) {
+            std::cout << options.help() << "\n";
+            return 0;
+        }
+        if (path.empty() || !exists(path) || !is_regular_file(path)) {
+            std::cerr << "input file is required.\n";
+            return 1;
+        }
+    } catch (const cxxopts::exceptions::exception& e) {
+        std::cerr << "error parsing options: " << e.what() << "\n";
+    }
+    reader r(path);
     return 0;
 }

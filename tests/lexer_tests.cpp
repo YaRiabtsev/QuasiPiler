@@ -1,5 +1,5 @@
 /*
-* The MIT License (MIT)
+ * The MIT License (MIT)
  *
  * Copyright (c) 2025 Yaroslav Riabtsev <yaroslav.riabtsev@rwth-aachen.de>
  *
@@ -22,15 +22,8 @@
  * SOFTWARE.
  */
 
-#ifndef PARSER_HPP
-#define PARSER_HPP
+#include "lexer.hpp"
 
+#include <gtest/gtest.h>
 
-
-class parser {
-
-};
-
-
-
-#endif //PARSER_HPP
+TEST(LexerTest, Constructor) { }

@@ -1,5 +1,5 @@
 /*
-* The MIT License (MIT)
+ * The MIT License (MIT)
  *
  * Copyright (c) 2025 Yaroslav Riabtsev <yaroslav.riabtsev@rwth-aachen.de>
  *
@@ -21,3 +21,18 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
+#ifndef LEXER_HPP
+#define LEXER_HPP
+
+#include "reader.hpp"
+
+class lexer {
+public:
+    explicit lexer(reader& r);
+
+private:
+    reader rd;
+};
+
+#endif // LEXER_HPP
