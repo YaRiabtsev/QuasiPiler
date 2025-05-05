@@ -40,7 +40,17 @@ jobs:
           ctest --output-on-failure --parallel $(nproc)
           lcov --capture --directory . --output-file coverage.info --rc branch_coverage=1 --filter branch --ignore-errors gcov,inconsistent,mismatch
           lcov --remove coverage.info '/usr/*' '*/tests/*' --output-file coverage.info --rc branch_coverage=1
-          genhtml coverage.info -t "QuasiPiler" --demangle-cpp --branch-coverage  --output-directory ../cov
+          genhtml coverage.info -t "QuasiPiler Coverage Report" --demangle-cpp --branch-coverage  --output-directory ../cov
+          
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: true
+          files: build/coverage.info
+          flags: unittests
+          name: codecov-umbrella
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
 
       - name: Clean build
         run: rm -rf build/

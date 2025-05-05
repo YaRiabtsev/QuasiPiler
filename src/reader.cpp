@@ -113,7 +113,7 @@ reader::reader(const std::filesystem::path& path, std::streamsize buffer_size)
     refill_buffer();
 }
 
-reader::reader(std::string& str)
+reader::reader(std::string& str) noexcept
     : buffer(std::move(str)) {
     if (!buffer.empty()) {
         line = 0;
@@ -127,9 +127,11 @@ reader::~reader() {
     }
 }
 
-bool reader::valid() const { return !buffer.empty() && shift < buffer.size(); }
+bool reader::valid() const noexcept {
+    return !buffer.empty() && shift < buffer.size();
+}
 
-char reader::peek() const { return buffer[shift]; }
+char reader::peek() const noexcept { return buffer[shift]; }
 
 char reader::get() {
     const char current = peek();
