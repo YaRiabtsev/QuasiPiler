@@ -51,5 +51,6 @@ int main(const int argc, char* argv[]) {
         std::cerr << "error parsing options: " << e.what() << "\n";
     }
     reader r(path);
+    lexer l(r);
     return 0;
 }

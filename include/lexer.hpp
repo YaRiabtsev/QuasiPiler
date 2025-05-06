@@ -32,7 +32,7 @@ public:
     explicit lexer(reader& r);
 
 private:
-    reader rd;
+    reader& rd;
 };
 
 #endif // LEXER_HPP

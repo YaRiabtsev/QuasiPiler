@@ -72,7 +72,7 @@ token_kind reader::read_number(std::string& number) {
             number += get();
         }
     }
-    assert(!number.empty() && "number is not empty");
+    assert(!number.empty() && "expected non-empty number");
     return is_float ? token_kind::floating : token_kind::integer;
 }
 

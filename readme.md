@@ -2,6 +2,10 @@
 
 ## _— the Hunchback Dragon of Compilers_
 
+[//]: # ([![version]&#40;https://img.shields.io/github/v/release/YaRiabtsev/QuasiPiler?include_prereleases&#41;]&#40;https://github.com/YaRiabtsev/QuasiPiler/releases/latest&#41;)
+[![codecov](https://codecov.io/gh/YaRiabtsev/QuasiPiler/graph/badge.svg?token=MCNEJFWMDU)](https://codecov.io/gh/YaRiabtsev/QuasiPiler)
+[![license](https://img.shields.io/github/license/YaRiabtsev/QuasiPiler?color=e6e6e6)](https://github.com/YaRiabtsev/QuasiPiler/blob/master/license)
+
 > “A one-eyed transpiler is much more incomplete than a blind transpiler, for he knows what it is that’s lacking.”  
 > — Victor-Marie from Gugle
 
