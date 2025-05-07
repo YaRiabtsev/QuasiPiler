@@ -24,5 +24,45 @@
 
 #include "lexer.hpp"
 
-lexer::lexer(reader& r)
-    : rd(r) { }
+void group::add_token(const std::shared_ptr<token>& tok) noexcept {
+    children_.push_back(tok);
+}
+
+void group::dump(std::stringstream& ss, const size_t indent) const noexcept {
+    ss << std::string(indent * 2, ' ') << "Group {\n";
+    for (auto& ptr : children_) {
+        if (const auto sub = std::dynamic_pointer_cast<group>(ptr)) {
+            sub->dump(ss, indent + 1);
+        } else {
+            ptr->dump(ss, indent + 1);
+        }
+    }
+    ss << std::string(indent * 2, ' ') << "}\n";
+}
+
+bool group::is_end() const noexcept {
+    if (children_.empty())
+        return false;
+    const auto k = children_.back()->kind;
+    return k == token_kind::close_bracket || k == token_kind::eof;
+}
+
+lexer::lexer(reader& rdr) noexcept
+    : reader_ref_(rdr) { }
+
+void lexer::group_lexemes(group& root_group) {
+    token t;
+    reader_ref_.next_token(t);
+    while (t.kind != token_kind::eof && t.kind != token_kind::close_bracket) {
+        if (t.kind == token_kind::open_bracket) {
+            group subgrp;
+            subgrp.add_token(std::make_shared<token>(t));
+            group_lexemes(subgrp);
+            root_group.add_token(std::make_shared<group>(subgrp));
+        } else {
+            root_group.add_token(std::make_shared<token>(t));
+        }
+        reader_ref_.next_token(t);
+    }
+    root_group.add_token(std::make_shared<token>(t));
+}

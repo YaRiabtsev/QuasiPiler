@@ -29,144 +29,184 @@
 #include <fstream>
 #include <source_location>
 
-/** \enum token_kind
- *  \brief Kinds of lexical tokens that the Reader can produce.
+/**
+ * \enum token_kind
+ * \brief Enumeration of lexical token types recognized by the reader.
  */
 enum class token_kind {
-    eof, ///< End of file
-    open_bracket, ///< '(', '[', or '{'
-    close_bracket, ///< ')', ']', or '}'
-    separator, ///< ',', ';', or ':'
-    keyword, ///< Identifier starting with letter or underscore
-    string, ///< Quoted string literal
-    whitespace, ///< Sequence of whitespace characters
-    integer, ///< Integer numeric literal
-    floating, ///< Floating-point numeric literal
-    special_character ///< Any other single character
+    eof, ///< End of file reached.
+    open_bracket, ///< Opening bracket: '(', '[', or '{'.
+    close_bracket, ///< Closing bracket: ')', ']', or '}'.
+    separator, ///< Separator character: ',', ';', or ':'.
+    keyword, ///< Keyword or identifier (starts with letter or '_').
+    string, ///< String literal (quoted).
+    comment, ///< Single- or multi-line comment.
+    whitespace, ///< Sequence of whitespace characters.
+    integer, ///< Integer numeric literal.
+    floating, ///< Floating-point numeric literal.
+    special_character ///< Any other character not otherwise classified.
 };
 
-/** \struct token
- *  \brief Represents a lexeme along with its source location.
+/**
+ * \struct token
+ * \brief Represents a lexical token with source metadata.
  */
 struct token {
-    token_kind kind; ///< The category of the token
-    int line; ///< Line number (0-based)
-    int col; ///< Column number (0-based)
+    token_kind kind; ///< Type of the token.
+    int line; ///< Zero-based line number where token begins.
+    int column; ///< Zero-based column number where token begins.
+    std::streamoff file_offset; ///< Absolute byte offset in the input.
+    std::string word; ///< Raw token text.
+
+    virtual ~token();
+
+    /**
+     * \brief Dumps token metadata to a stringstream.
+     * \param ss     Output stream to write into.
+     * \param indent Number of indent levels to apply (default = 0).
+     */
+    virtual void dump(std::stringstream& ss, size_t indent) const noexcept;
 };
 
-/** \class reader
- *  \brief A simple buffered character reader for lexing basic tokens.
+/**
+ * \class reader
+ * \brief Buffered character reader for lexing tokens from files or strings.
  *
- *  The Reader reads from either a file or an in-memory string buffer,
- *  providing methods to retrieve the next lexeme, read lines, and
- *  control the read position.
+ * Supports reading from a file or an in-memory string, with buffering,
+ * and can lex keywords, numbers, strings, comments, whitespace, etc.
  */
 class reader {
 public:
-    /** \brief Construct a reader from a file path.
-     *  \param path        Filesystem path to open for reading.
-     *  \param buffer_size Maximum chunk size (in bytes) to read at once.
-     *                     Defaults to 4096.
-     *  \throws std::invalid_argument if the file cannot be opened.
+    /**
+     * \brief Constructs a reader that reads from a file.
+     * \param path        Filesystem path of the file to read.
+     * \param buffer_size Maximum buffer size in bytes (default = 4096).
+     * \throws std::invalid_argument If the file cannot be opened.
      */
     explicit reader(
         const std::filesystem::path& path, std::streamsize buffer_size = 4096
     );
-    /** \brief Construct a reader over an existing string buffer.
-     *  \param str  Reference to a string containing input data.
-     *              The reader takes ownership via move.
-     */
-    explicit reader(std::string& str) noexcept;
 
-    /** \brief Destructor closes the input file if open. */
+    /**
+     * \brief Constructs a reader over an existing string buffer.
+     * \param data String data to read from; the reader takes ownership via
+     * move.
+     */
+    explicit reader(std::string& data) noexcept;
+
+    /**
+     * \brief Destructor. Closes the file stream if it is open.
+     */
     ~reader();
 
-    /** \brief Reads the next lexeme from the input.
-     *  \param lexeme  Output parameter that receives the lexeme text.
-     *  \return a token struct describing the lexeme and its location.
-     *  \note If end-of-file is reached, returns token_kind::eof.
+    /**
+     * \brief Reads the next lexical token from the input.
+     * \param out Reference to a token struct to populate.
+     * \throws std::runtime_error On malformed input (e.g., unterminated
+     * string/comment).
      */
-    token next_token(std::string& lexeme);
-    /** \brief Reads up to max_size characters or until a newline.
-     *  \param data      Output buffer for the read characters.
-     *  \param max_size  Maximum number of characters to read.
-     *                   Defaults to 4096.
-     *  \return A pair of (line, col) where the read began.
-     */
-    std::pair<int, int> readln(std::string& data, size_t max_size = 4096);
+    void next_token(token& out);
 
-    /** \brief Jumps to an absolute position in the input stream.
-     *  \param position  Byte offset from the beginning of input.
-     *  \param line      Line number to set for subsequent reads.
-     *  \param col       Column number to set for subsequent reads.
-     *  \throws std::runtime_error if position is out of range.
+    /**
+     * \brief Jumps to a specific byte offset in the input stream.
+     * \param position Absolute byte offset to seek to.
+     * \param line     Zero-based line number to assign after seeking.
+     * \param column   Zero-based column number to assign after seeking.
+     * \throws std::runtime_error If the position is negative or out of range.
      */
-    void jump_to(std::streamoff position, int line, int col);
+    void jump_to_position(std::streamoff position, int line, int column);
 
 private:
-    std::ifstream ifs; ///< Input file stream (if reading from file)
-    std::string buffer; ///< Internal read buffer
-    std::streamsize max_buffer_size {}; ///< Maximum size of buffer chunks
-    std::streamoff offset { -1 }; ///< Current file offset for current buffer
-    int col { -1 }, line { -1 }; ///< Current read position (line, col)
-    size_t shift { 0 }; ///< Index within buffer for next char
+    std::ifstream ifs; ///< File stream if reading from a file.
+    std::string buffer; ///< Buffer holding the current chunk of input.
+    std::streamsize
+        max_buffer_size {}; ///< Maximum number of bytes to read into buffer.
+    std::streamoff
+        file_offset {}; ///< Byte offset of the start of the buffer in file.
+    int line { 0 }; ///< Current zero-based line number.
+    int column { 0 }; ///< Current zero-based column number.
+    size_t buffer_position { 0 }; ///< Current index into the buffer.
 
-    /** \brief Checks if the current buffer position is valid.
-     *  \return true if shift is within [0, buffer.size()), false otherwise.
+    /**
+     * \brief Checks whether there is more input in the buffer.
+     * \return True if there are unread characters in the buffer.
      */
-    bool valid() const noexcept;
-    /** \brief Peeks at the current character without consuming it.
-     *  \pre valid() == true
-     *  \return Current character in buffer.
-     */
-    char peek() const noexcept;
+    bool is_valid() const noexcept;
 
-    /** \brief Consumes and returns the current character.
-     *  \pre valid() == true
-     *  \return The character at the current position.
+    /**
+     * \brief Peeks at the next character without consuming it.
+     * \return The character at the current buffer position.
      */
-    char get();
+    char peek_char() const noexcept;
 
-    /** \brief Advances the buffer position by one character, refilling if
-     * needed.
+    /**
+     * \brief Retrieves and consumes the current character.
+     * \return The character that was at the buffer position.
      */
-    void next();
+    char get_char();
 
-    /** \brief Refills the internal buffer from the input stream.
-     *  Reads up to max_buffer_size bytes; resizes buffer to actual bytes read.
+    /**
+     * \brief Advances the buffer position by one, refilling when needed.
      */
-    void refill_buffer();
-    /** \brief Parses and consumes a sequence of whitespace characters.
-     *  \param word  Output string to accumulate whitespace characters.
-     */
-    void read_whitespace(std::string& word);
+    void advance_char();
 
-    /** \brief Parses and consumes an identifier or keyword.
-     *  \param word  Output string to accumulate identifier characters.
+    /**
+     * \brief Reloads the buffer from the input stream.
+     *
+     * Does nothing if the stream is closed or at end of file.
      */
-    void read_keyword(std::string& word);
+    void reload_buffer();
 
-    /** \brief Parses and consumes a quoted string literal, handling escapes.
-     *  \param value  Output string to accumulate unescaped characters.
-     *  \throws std::runtime_error on invalid escape or missing quote.
+    /**
+     * \brief Reads and accumulates a run of whitespace characters.
+     * \param into Output string to accumulate the whitespace.
      */
-    void read_string(std::string& value);
+    void read_whitespace(std::string& into);
 
-    /** \brief Parses and consumes a numeric literal (int or float).
-     *  \param number  Output string to accumulate numeric characters.
-     *  \return token_kind::integer or token_kind::floating.
-     *  \throws std::runtime_error on malformed number.
+    /**
+     * \brief Reads and accumulates an identifier (letters, digits, or '_').
+     * \param into Output string to accumulate the identifier.
      */
-    token_kind read_number(std::string& number);
+    void read_keyword(std::string& into);
 
-    /** \brief Constructs a parse error with detailed context.
-     *  \param message  Description of the error.
-     *  \param location Source location from where the error was raised.
-     *  \return A std::runtime_error containing full diagnostic text.
+    /**
+     * \brief Reads a quoted string literal, decoding escape sequences.
+     * \param into Output string to accumulate the decoded content.
+     * \throws std::runtime_error On invalid or unterminated string.
      */
-    std::runtime_error throw_message(
+    void read_string(std::string& into);
+
+    /**
+     * \brief Reads a comment (single- or multi-line) starting with '/'.
+     * \param into Output string to accumulate the entire comment
+     *             (must start with initial '/').
+     * \throws std::runtime_error On unterminated multi-line comment.
+     */
+    void read_comment(std::string& into);
+
+    /**
+     * \brief Reads a numeric literal (integer or floating-point).
+     * \param into Output string to accumulate the digits and symbols.
+     * \return token_kind::integer or token_kind::floating.
+     * \throws std::runtime_error On malformed numeric input.
+     */
+    token_kind read_number(std::string& into);
+
+    /**
+     * \brief Initializes a token with the reader’s current position.
+     * \param t Token to initialize.
+     */
+    void init_token(token& t) const noexcept;
+
+    /**
+     * \brief Constructs a detailed runtime error with context.
+     * \param message  Description of the problem.
+     * \param location Source location for debugging (defaults to call site).
+     * \return A std::runtime_error containing full diagnostic information.
+     */
+    [[nodiscard]] std::runtime_error make_error(
         const std::string& message,
-        std::source_location location = std::source_location::current()
+        const std::source_location& location = std::source_location::current()
     ) const;
 };
 
