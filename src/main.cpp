@@ -51,6 +51,11 @@ int main(const int argc, char* argv[]) {
         std::cerr << "error parsing options: " << e.what() << "\n";
     }
     reader r(path);
-    lexer l(r);
+    lexer l { r };
+    group g;
+    l.group_lexemes(g);
+    std::stringstream ss;
+    g.dump(ss);
+    std::cout << ss.str();
     return 0;
 }

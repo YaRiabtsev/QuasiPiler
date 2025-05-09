@@ -1,12 +1,5 @@
-
-<picture>
-  <source srcset="logo/llogo.svg" media="(prefers-color-scheme: dark)">
-  <img src="logo/dlogo.svg" alt="QuasiPiler Logo">
-</picture>
-
+![QuasiPiler Logo Light](logo/llogo.svg#gh-light-mode-only)![QuasiPiler Logo Dark](logo/dlogo.svg#gh-dark-mode-only)
 ## _— the Hunchback Dragon of Compilers_
-
-[//]: # (![QuasiPiler Logo Light]&#40;logo/llogo.svg#gh-light-mode-only&#41;![QuasiPiler Logo Dark]&#40;logo/dlogo.svg#gh-dark-mode-only&#41;)
 
 [//]: # ([![version]&#40;https://img.shields.io/github/v/release/YaRiabtsev/QuasiPiler?include_prereleases&#41;]&#40;https://github.com/YaRiabtsev/QuasiPiler/releases/latest&#41;)
 [![codecov](https://codecov.io/gh/YaRiabtsev/QuasiPiler/graph/badge.svg?token=MCNEJFWMDU)](https://codecov.io/gh/YaRiabtsev/QuasiPiler)

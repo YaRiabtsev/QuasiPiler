@@ -60,12 +60,11 @@ struct token {
 
     virtual ~token();
 
-    /**
-     * \brief Dumps token metadata to a stringstream.
-     * \param ss     Output stream to write into.
-     * \param indent Number of indent levels to apply (default = 0).
-     */
-    virtual void dump(std::stringstream& ss, size_t indent) const noexcept;
+    virtual void dump(
+        std::ostream& os, const std::string& prefix, bool is_last
+    ) const noexcept;
+
+    void dump(std::ostream& os) const noexcept;
 };
 
 /**

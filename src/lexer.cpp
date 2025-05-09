@@ -24,45 +24,103 @@
 
 #include "lexer.hpp"
 
-void group::add_token(const std::shared_ptr<token>& tok) noexcept {
-    children_.push_back(tok);
+group::group() noexcept = default;
+
+group::group(const token& t) {
+    start = { t.line, t.column };
+    if (t.kind != token_kind::open_bracket) {
+        throw std::invalid_argument("token is not an opening bracket");
+    }
+    if (t.word == "[") {
+        kind = group_kind::square;
+    } else if (t.word == "(") {
+        kind = group_kind::round;
+    } else if (t.word == "{") {
+        kind = group_kind::curly;
+    } else {
+        throw std::invalid_argument("token is not a valid opening bracket");
+    }
 }
 
-void group::dump(std::stringstream& ss, const size_t indent) const noexcept {
-    ss << std::string(indent * 2, ' ') << "Group {\n";
-    for (auto& ptr : children_) {
-        if (const auto sub = std::dynamic_pointer_cast<group>(ptr)) {
-            sub->dump(ss, indent + 1);
-        } else {
-            ptr->dump(ss, indent + 1);
-        }
+void group::add_token(const std::shared_ptr<token>& tok) noexcept {
+    children.push_back(tok);
+}
+
+void group::dump(
+    std::ostream& os, const std::string& prefix, const bool is_last
+) const noexcept {
+    os << prefix;
+    std::string child_prefix = prefix;
+    if (kind != group_kind::file) {
+        os << (is_last ? "`-" : "|-");
+        child_prefix += +(is_last ? "  " : "| ");
     }
-    ss << std::string(indent * 2, ' ') << "}\n";
+    os << "Group kind=" << static_cast<int>(kind) << " <" << start.first << ':'
+       << start.second << "> <" << end.first << ':' << end.second << ">\n";
+
+    auto b = children.begin();
+    // if (!children.empty() && (*b)->kind == token_kind::open_bracket) {
+    //     ++b;
+    // }
+    auto e = children.end();
+    // if (e != b) {
+    //     --e;
+    // }
+    for (auto it = b; it != e; ++it) {
+        const bool last_child = (std::next(it) == e);
+        (*it)->dump(os, child_prefix, last_child);
+    }
 }
 
 bool group::is_end() const noexcept {
-    if (children_.empty())
+    if (children.empty())
         return false;
-    const auto k = children_.back()->kind;
+    const auto k = children.back()->kind;
     return k == token_kind::close_bracket || k == token_kind::eof;
 }
 
+void group::close(const token& token) {
+    end = { token.line, token.column };
+    if (token.kind == token_kind::eof && kind == group_kind::file) {
+        return;
+    }
+    if (token.kind == token_kind::close_bracket) {
+        if (token.word == "]" && kind == group_kind::square) {
+            return;
+        }
+        if (token.word == ")" && kind == group_kind::round) {
+            return;
+        }
+        if (token.word == "}" && kind == group_kind::curly) {
+            return;
+        }
+    }
+
+    std::ostringstream os;
+    token.dump(os);
+    throw std::runtime_error("unmatched closing bracket: " + os.str());
+}
+
 lexer::lexer(reader& rdr) noexcept
-    : reader_ref_(rdr) { }
+    : reader_(rdr) { }
 
 void lexer::group_lexemes(group& root_group) {
+    std::vector<std::shared_ptr<token>> tokens;
     token t;
-    reader_ref_.next_token(t);
+    reader_.next_token(t);
     while (t.kind != token_kind::eof && t.kind != token_kind::close_bracket) {
-        if (t.kind == token_kind::open_bracket) {
-            group subgrp;
-            subgrp.add_token(std::make_shared<token>(t));
-            group_lexemes(subgrp);
-            root_group.add_token(std::make_shared<group>(subgrp));
+        if (t.kind == token_kind::whitespace || t.kind == token_kind::comment) {
+        } else if (t.kind == token_kind::open_bracket) {
+            group subgroup(t);
+            group_lexemes(subgroup);
+            tokens.push_back(std::make_shared<group>(subgroup));
         } else {
-            root_group.add_token(std::make_shared<token>(t));
+            tokens.push_back(std::make_shared<token>(t));
         }
-        reader_ref_.next_token(t);
+        reader_.next_token(t);
     }
-    root_group.add_token(std::make_shared<token>(t));
+    for (const auto& token : tokens) {
+        root_group.add_token(token);
+    }
+    root_group.close(t);
 }

@@ -148,7 +148,7 @@ TEST(ReaderTest, StringToken) {
     }
 }
 
-TEST(ReaderTest, CommenttToken) {
+TEST(ReaderTest, CommentToken) {
     token t;
     std::string multiline = "/*";
     for (std::string& str : std::vector<std::string> {

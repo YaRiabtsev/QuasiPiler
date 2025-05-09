@@ -33,14 +33,37 @@ TEST(LexerTest, Group) {
     group g;
     l.group_lexemes(g);
     std::stringstream ss;
-    g.dump(ss, 0);
+    g.dump(ss);
     EXPECT_EQ(
         ss.str(),
-        "Group {\n  Group {\n    Token(\"[\") kind=1 @0:0 off=0\n    "
-        "Token(\"1\") kind=8 @0:1 off=1\n    Token(\",\") kind=3 @0:2 off=2\n  "
-        "  Token(\"2\") kind=8 @0:3 off=3\n    Token(\",\") kind=3 @0:4 "
-        "off=4\n    Token(\"3\") kind=8 @0:5 off=5\n    Token(\",\") kind=3 "
-        "@0:6 off=6\n    Token(\"4\") kind=8 @0:7 off=7\n    Token(\"]\") "
-        "kind=2 @0:8 off=8\n  }\n  Token(\"\") kind=0 @0:9 off=9\n}\n"
+        "Group kind=0 <0:0> <0:9>\n`-Group kind=1 <0:0> <0:8>\n  "
+        "|-Token(\"1\") kind=8 <0:1>\n  |-Token(\",\") kind=3 <0:2>\n  "
+        "|-Token(\"2\") kind=8 <0:3>\n  |-Token(\",\") kind=3 <0:4>\n  "
+        "|-Token(\"3\") kind=8 <0:5>\n  |-Token(\",\") kind=3 <0:6>\n  "
+        "`-Token(\"4\") kind=8 <0:7>\n"
     );
+}
+
+#include <iostream>
+
+// TEST(LexerTest, JSON) {
+//     const std::filesystem::path path = "test_data/de.json";
+//     reader r { path };
+//     lexer l { r };
+//     group g;
+//     l.group_lexemes(g);
+//     // std::stringstream ss;
+//     g.dump(std::cout);
+//     // std::cout << ss.str();
+// }
+
+TEST(LexerTest, tmp) {
+    std::string str = "{1,[2,(3)],4}";
+    reader r { str };
+    lexer l { r };
+    group g;
+    l.group_lexemes(g);
+    std::stringstream ss;
+    g.dump(ss);
+    std::cout << ss.str();
 }

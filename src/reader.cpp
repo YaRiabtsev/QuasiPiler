@@ -351,8 +351,12 @@ void reader::jump_to_position(
 
 token::~token() = default;
 
-void token::dump(std::stringstream& ss, const size_t indent) const noexcept {
-    ss << std::string(indent * 2, ' ') << "Token(\"" << word << "\")"
-       << " kind=" << static_cast<int>(kind) << " @" << line << ":" << column
-       << " off=" << file_offset << "\n";
+void token::dump(
+    std::ostream& os, const std::string& prefix, const bool is_last
+) const noexcept {
+    os << prefix << (is_last ? "`-" : "|-") << "Token(\"" << word << "\")"
+       << " kind=" << static_cast<int>(kind) << " <" << line << ":" << column
+       << ">\n";
 }
+
+void token::dump(std::ostream& os) const noexcept { dump(os, "", true); }
