@@ -26,13 +26,75 @@
 #define LEXER_HPP
 
 #include "reader.hpp"
+#include <vector>
 
-class lexer {
+enum class group_kind { file, square, round, curly };
+
+/**
+ * \class group
+ * \brief A composite token that can contain other tokens or nested groups.
+ *
+ * Used to represent matched bracketed sections and their contents
+ * as a tree of tokens/groups.
+ */
+class group final : public token {
 public:
-    explicit lexer(reader& r);
+    explicit group() noexcept;
+    explicit group(const token& t);
+    using token::dump;
+    /**
+     * \brief Adds a child token or subgroup to this group.
+     * \param tok Shared pointer to the token (or subgroup) to add.
+     */
+    void add_token(const std::shared_ptr<token>& tok) noexcept;
+
+    void dump(
+        std::ostream& os, const std::string& prefix, bool is_last
+    ) const noexcept override;
+
+    /**
+     * \brief Checks if this group has reached its closing delimiter.
+     * \return True if the last child is a closing bracket or EOF token.
+     */
+    [[nodiscard]] bool is_end() const noexcept;
+    void close(const token& token);
 
 private:
-    reader rd;
+    std::vector<std::shared_ptr<token>>
+        children; ///< Contained tokens/subgroups.
+    group_kind kind = group_kind::file;
+    std::pair<int, int> start { 0, 0 },
+        end { 0, 0 }; ///< Start and end positions.
+};
+
+/**
+ * \class lexer
+ * \brief Recursively groups a flat token stream into nested groups.
+ *
+ * Uses a reader to pull tokens and builds a tree of \ref group instances,
+ * matching open/close brackets and preserving other tokens verbatim.
+ */
+class lexer {
+public:
+    /**
+     * \brief Constructs a lexer bound to a reader.
+     * \param rdr Reference to a \ref reader from which to fetch tokens.
+     */
+    explicit lexer(reader& rdr) noexcept;
+
+    /**
+     * \brief Populates a root group with nested tokens and subgroups.
+     *
+     * Reads tokens from the associated reader until a matching
+     * close-bracket or EOF is encountered, recursively handling
+     * nested bracket pairs.
+     *
+     * \param root_group The top-level group to populate.
+     */
+    void group_lexemes(group& root_group);
+
+private:
+    reader& reader_; ///< Underlying token source.
 };
 
 #endif // LEXER_HPP

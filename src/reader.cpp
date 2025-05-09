@@ -26,98 +26,28 @@
 
 #include <cassert>
 
-token_kind reader::read_number(std::string& number) {
-    if (!number.empty()) {
-        number.clear();
-    }
-    bool is_float = false;
-    if (valid() && peek() == '0') {
-        number += get();
-        if (valid() && std::isdigit(peek())) {
-            throw throw_message(
-                "invalid number format: leading zeros are not allowed"
-            );
-        }
-    } else if (valid() && std::isdigit(peek())) {
-        do {
-            number += get();
-        } while (valid() && std::isdigit(peek()));
-    } else {
-        throw throw_message("invalid number format: expected digit");
-    }
-    if (valid() && peek() == '.') {
-        is_float = true;
-        number += get();
-        if (!valid() || !std::isdigit(peek())) {
-            throw throw_message(
-                "invalid number format: expected digit after decimal"
-            );
-        }
-        while (valid() && std::isdigit(peek())) {
-            number += get();
-        }
-    }
-    if (valid() && (peek() == 'e' || peek() == 'E')) {
-        is_float = true;
-        number += get();
-        if (valid() && (peek() == '+' || peek() == '-')) {
-            number += get();
-        }
-        if (!valid() || !std::isdigit(peek())) {
-            throw throw_message(
-                "invalid number format: expected digit after exponent"
-            );
-        }
-        while (valid() && std::isdigit(peek())) {
-            number += get();
-        }
-    }
-    assert(!number.empty() && "number is not empty");
-    return is_float ? token_kind::floating : token_kind::integer;
-}
+// #include <codecvt>
+// #include <sstream>
 
-std::runtime_error reader::throw_message(
-    const std::string& message, const std::source_location location
-) const {
-    std::ostringstream oss;
-    oss << "[Reader-Error] " << message << ". ";
-#ifndef NDEBUG
-    if (!ifs.is_open()) {
-        oss << "no input stream open. ";
-    }
-    if (!valid()) {
-        oss << "position is out of range. line: " << (line + 1)
-            << ", column: " << (col + 1) << " exceeds available input. ";
-    } else {
-        const char current_char = peek();
-        oss << "character '" << current_char
-            << "' (ASCII: " << static_cast<unsigned>(current_char)
-            << ") was found at line " << (line + 1) << ", column " << (col + 1)
-            << ". ";
-    }
-    oss << "in file: " << location.file_name() << '(' << location.line() << ':'
-        << location.column() << ") `" << location.function_name() << "`";
-    oss << std::endl << buffer;
-#endif
-    return std::runtime_error(oss.str());
-}
-
-reader::reader(const std::filesystem::path& path, std::streamsize buffer_size)
+reader::reader(
+    const std::filesystem::path& path, const std::streamsize buffer_size
+)
     : max_buffer_size(buffer_size) {
     ifs.open(path, std::ios::in | std::ios::binary);
     if (!ifs.is_open()) {
-        throw std::invalid_argument("failed to open file: " + path.string());
+        throw std::invalid_argument("cannot open file: " + path.string());
     }
     ifs.seekg(0, std::ios::beg);
-    offset = ifs.tellg();
-    refill_buffer();
+    file_offset = ifs.tellg();
+    buffer.resize(static_cast<size_t>(max_buffer_size));
+    reload_buffer();
 }
 
-reader::reader(std::string& str) noexcept
-    : buffer(std::move(str)) {
+reader::reader(std::string& data) noexcept
+    : buffer(std::move(data)) {
     if (!buffer.empty()) {
         line = 0;
-        col = 0;
+        column = 0;
     }
 }
 
@@ -127,201 +57,306 @@ reader::~reader() {
     }
 }
 
-bool reader::valid() const noexcept {
-    return !buffer.empty() && shift < buffer.size();
+bool reader::is_valid() const noexcept {
+    return !buffer.empty() && buffer_position < buffer.size();
 }
 
-char reader::peek() const noexcept { return buffer[shift]; }
+char reader::peek_char() const noexcept { return buffer[buffer_position]; }
 
-char reader::get() {
-    const char current = peek();
-    next();
-    return current;
+char reader::get_char() {
+    const char current_char = peek_char();
+    advance_char();
+    return current_char;
 }
 
-void reader::next() {
-    assert(!buffer.empty() && "stream is not empty");
-    ++shift;
-    ++col;
-    if (shift >= buffer.size()) {
-        refill_buffer();
+void reader::advance_char() {
+    assert(!buffer.empty());
+    ++buffer_position;
+    ++column;
+    if (buffer_position >= buffer.size()) {
+        reload_buffer();
     }
 }
 
-void reader::refill_buffer() {
+void reader::reload_buffer() {
     if (!ifs.is_open() || ifs.eof()) {
         return;
     }
-    offset = ifs.tellg();
-    ifs.read(buffer.data(), max_buffer_size);
-    if (const auto read_bytes = ifs.gcount(); read_bytes < max_buffer_size) {
-        buffer.resize(static_cast<size_t>(read_bytes));
-    }
-    shift = 0;
+    file_offset = ifs.tellg();
+    ifs.read(&buffer[0], max_buffer_size);
+    const auto got = ifs.gcount();
+    buffer.resize(static_cast<size_t>(got));
+    buffer_position = 0;
 }
 
-void reader::read_whitespace(std::string& word) {
-    if (!word.empty()) {
-        word.clear();
-    }
-    while (valid() && std::isspace(peek())) {
-        if (peek() == '\n') {
+void reader::read_whitespace(std::string& into) {
+    into.clear();
+    while (is_valid() && std::isspace(peek_char())) {
+        if (peek_char() == '\n') {
             ++line;
-            col = -1;
+            column = -1;
         }
-        word += get();
+        into += get_char();
     }
 }
 
-void reader::read_keyword(std::string& word) {
-    assert(
-        valid() && (std::isalpha(peek()) || peek() == '_')
-        && "expected keyword starting with a letter"
-    );
-    if (!word.empty()) {
-        word.clear();
-    }
+void reader::read_keyword(std::string& into) {
+    into.clear();
     do {
-        word += get();
-    } while (valid() && (std::isalnum(peek()) || peek() == '_'));
+        into += get_char();
+    } while (is_valid() && (std::isalnum(peek_char()) || peek_char() == '_'));
 }
 
-void reader::read_string(std::string& value) {
-    assert(
-        valid() && (peek() == '"' || peek() == '\'') && "expected opening quote"
-    );
-    if (!value.empty()) {
-        value.clear();
+void reader::read_comment(std::string& into) {
+    assert(is_valid() && into.size() == 1 && into[0] == '/');
+    into += get_char();
+    const bool is_multiline = into.back() == '*';
+    while (is_valid()) {
+        const char current_char = get_char();
+        if (is_multiline && current_char == '/' && into.back() == '*'
+            && into.size() > 2) {
+            into += current_char;
+            return;
+        }
+        into += current_char;
+        if (current_char == '\n') {
+            ++line;
+            column = 0;
+            if (!is_multiline) {
+                break;
+            }
+        }
     }
-    const char quote = get();
-    bool is_backslash = false;
-    do {
-        const char current = peek();
-        if (is_backslash) {
-            switch (current) {
-            case '\"':
-                value += '\"';
+    if (is_multiline) {
+        throw make_error("missing closing comment delimiter");
+    }
+}
+
+void reader::read_string(std::string& into) {
+    into.clear();
+    const char quote = get_char();
+    bool escaped = false;
+    while (is_valid()) {
+        const char current_char = peek_char();
+        if (escaped) {
+            switch (current_char) {
+            case '"':
+                into += '"';
+                break;
+            case '\'':
+                into += '\'';
                 break;
             case '\\':
-                value += '\\';
+                into += '\\';
                 break;
             case '/':
-                value += '/';
+                into += '/';
                 break;
             case 'b':
-                value += '\b';
+                into += '\b';
                 break;
             case 'f':
-                value += '\f';
+                into += '\f';
                 break;
             case 'n':
-                value += '\n';
+                into += '\n';
                 break;
             case 'r':
-                value += '\r';
+                into += '\r';
                 break;
             case 't':
-                value += '\t';
+                into += '\t';
                 break;
             case 'u': {
                 std::string hex;
                 for (int i = 0; i < 4; ++i) {
-                    next();
-                    if (!valid() || !isxdigit(peek())) {
-                        throw throw_message("invalid Unicode escape sequence");
+                    advance_char();
+                    if (!is_valid() || !std::isxdigit(peek_char())) {
+                        throw make_error("invalid Unicode escape");
                     }
-                    hex += peek();
+                    hex += peek_char();
                 }
                 const int codepoint = std::stoi(hex, nullptr, 16);
                 std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t>
                     converter;
-                value += converter.to_bytes(static_cast<char32_t>(codepoint));
+                into += converter.to_bytes(static_cast<char32_t>(codepoint));
                 break;
             }
             default:
-                throw throw_message("invalid escape sequence");
+                throw make_error("invalid escape sequence");
             }
-            is_backslash = false;
-        } else if (current == '\\') {
-            is_backslash = true;
-        } else if (current == quote) {
+            escaped = false;
+        } else if (current_char == '\\') {
+            escaped = true;
+        } else if (current_char == quote) {
             break;
         } else {
-            value += current;
+            into += current_char;
         }
-        next();
-    } while (valid());
-    if (!valid() || peek() != quote) {
-        throw throw_message("missing closing quote");
+        advance_char();
     }
-    next();
+    if (!is_valid() || peek_char() != quote) {
+        throw make_error("missing closing quote");
+    }
+    advance_char();
 }
 
-void reader::jump_to(
-    const std::streamoff position, const int line, const int col
+token_kind reader::read_number(std::string& into) {
+    into.clear();
+    bool is_float = false;
+    if (is_valid() && peek_char() == '0') {
+        into += get_char();
+        if (is_valid() && std::isdigit(peek_char())) {
+            throw make_error("leading zeros not allowed");
+        }
+    } else if (is_valid() && std::isdigit(peek_char())) {
+        do {
+            into += get_char();
+        } while (is_valid() && std::isdigit(peek_char()));
+    } else {
+        throw make_error("expected digit");
+    }
+
+    if (is_valid() && peek_char() == '.') {
+        is_float = true;
+        into += get_char();
+        if (!is_valid() || !std::isdigit(peek_char())) {
+            throw make_error("digit expected after decimal");
+        }
+        while (is_valid() && std::isdigit(peek_char())) {
+            into += get_char();
+        }
+    }
+
+    if (is_valid() && (peek_char() == 'e' || peek_char() == 'E')) {
+        is_float = true;
+        into += get_char();
+        if (is_valid() && (peek_char() == '+' || peek_char() == '-')) {
+            into += get_char();
+        }
+        if (!is_valid() || !std::isdigit(peek_char())) {
+            throw make_error("digit expected after exponent");
+        }
+        while (is_valid() && std::isdigit(peek_char())) {
+            into += get_char();
+        }
+    }
+    return is_float ? token_kind::floating : token_kind::integer;
+}
+
+void reader::init_token(token& t) const noexcept {
+    t.word.clear();
+    t.line = line;
+    t.column = column;
+    t.file_offset = file_offset + static_cast<std::streamoff>(buffer_position);
+}
+
+std::runtime_error reader::make_error(
+    const std::string& message, const std::source_location& location
+) const {
+    std::ostringstream oss;
+    oss << "[Reader-Error] " << message << ". ";
+#ifndef NDEBUG
+    if (!ifs.is_open()) {
+        oss << "no file open. ";
+    }
+    if (!is_valid()) {
+        oss << "position is out of range. line: " << (line + 1)
+            << ", column: " << (column + 1) << " exceeds available input. ";
+    } else {
+        const char current_char = peek_char();
+        oss << "character '" << current_char
+            << "' (ASCII: " << static_cast<unsigned>(current_char)
+            << ") was found at line " << (line + 1) << ", column "
+            << (column + 1) << ". ";
+    }
+    oss << "in file: " << location.file_name() << '(' << location.line() << ':'
+        << location.column() << ") `" << location.function_name() << "`";
+    oss << std::endl << buffer;
+#endif
+    return std::runtime_error(oss.str());
+}
+
+void reader::next_token(token& out) {
+    init_token(out);
+    out.kind = token_kind::special_character;
+
+    if (!is_valid()) {
+        out.kind = token_kind::eof;
+        out.word.clear();
+        return;
+    }
+    switch (const char current_char = peek_char()) {
+    case '(':
+    case '[':
+    case '{':
+        out.kind = token_kind::open_bracket;
+        out.word = std::string(1, get_char());
+        break;
+    case ')':
+    case ']':
+    case '}':
+        out.kind = token_kind::close_bracket;
+        out.word = std::string(1, get_char());
+        break;
+    case ',':
+    case ';':
+    case ':':
+        out.kind = token_kind::separator;
+        out.word = std::string(1, get_char());
+        break;
+    case '/':
+        out.word = std::string(1, get_char());
+        if (is_valid() && (peek_char() == '/' || peek_char() == '*')) {
+            read_comment(out.word);
+            out.kind = token_kind::comment;
+        }
+        break;
+    default:
+        if (std::isalpha(current_char) || current_char == '_') {
+            read_keyword(out.word);
+            out.kind = token_kind::keyword;
+        } else if (std::isdigit(current_char)) {
+            out.kind = read_number(out.word);
+        } else if (current_char == '"' || current_char == '\'') {
+            read_string(out.word);
+            out.kind = token_kind::string;
+        } else if (std::isspace(current_char)) {
+            read_whitespace(out.word);
+            out.kind = token_kind::whitespace;
+        } else {
+            out.word = std::string(1, get_char());
+        }
+    }
+}
+
+void reader::jump_to_position(
+    const std::streamoff position, const int line, const int column
 ) {
     if (position < 0) {
-        throw throw_message("position is out of range");
+        throw make_error("position is out of range");
     }
     if (!ifs.is_open()) {
-        shift = static_cast<size_t>(position);
-        if (shift > buffer.size()) {
-            throw throw_message("position is out of range");
+        buffer_position = static_cast<size_t>(position);
+        if (buffer_position > buffer.size()) {
+            throw make_error("position is out of range");
         }
     } else {
         ifs.seekg(position, std::ios::beg);
-        refill_buffer();
+        reload_buffer();
     }
     this->line = line;
-    this->col = col;
+    this->column = column;
 }
 
-token reader::next_token(std::string& lexeme) {
-    if (!lexeme.empty()) {
-        lexeme.clear();
-    }
-    const std::pair position = { line, col };
-    auto t = token_kind::special_character;
-    if (!valid()) {
-        t = token_kind::eof;
-    } else {
-        if (peek() == '(' || peek() == '[' || peek() == '{') {
-            t = token_kind::open_bracket;
-        } else if (peek() == ')' || peek() == ']' || peek() == '}') {
-            t = token_kind::close_bracket;
-        } else if (peek() == ',' || peek() == ';' || peek() == ':') {
-            t = token_kind::separator;
-        } else if (std::isalpha(peek()) || peek() == '_') {
-            read_keyword(lexeme);
-            t = token_kind::keyword;
-        } else if (std::isdigit(peek())) {
-            t = read_number(lexeme);
-        } else if (peek() == '\'' || peek() == '"') {
-            read_string(lexeme);
-            t = token_kind::string;
-        } else if (std::isspace(peek())) {
-            read_whitespace(lexeme);
-            t = token_kind::whitespace;
-        }
-        if (lexeme.empty()) {
-            lexeme = get();
-        }
-    }
-    return { t, position.first, position.second };
+token::~token() = default;
+
+void token::dump(
+    std::ostream& os, const std::string& prefix, const bool is_last
+) const noexcept {
+    os << prefix << (is_last ? "`-" : "|-") << "Token(\"" << word << "\")"
+       << " kind=" << static_cast<int>(kind) << " <" << line << ":" << column
+       << ">\n";
 }
 
-std::pair<int, int> reader::readln(std::string& data, size_t max_size) {
-    if (!data.empty()) {
-        data.clear();
-    }
-    const std::pair position = { line, col };
-    while (valid() && data.size() < max_size) {
-        data += peek();
-        if (get() == '\n') {
-            ++line;
-            col = 0;
-            break;
-        }
-    }
-    return position;
-}
+void token::dump(std::ostream& os) const noexcept { dump(os, "", true); }

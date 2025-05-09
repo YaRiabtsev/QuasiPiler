@@ -24,28 +24,21 @@ jobs:
       - uses: MarkusJx/googletest-installer@v1.1
 
       - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz lcov libcxxopts-dev
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz lcov llvm libcxxopts-dev
 
       - name: Generate Doxygen
         run: doxygen Doxyfile
 
       - name: Build with coverage
         run: |
-          cmake -S . -B build -DCOVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build
+          cmake -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON -DCOVERAGE=ON
+          cmake --build build --target coverage
 
-      - name: Run tests and generate coverage report
-        run: |
-          cd build
-          ctest --output-on-failure --parallel $(nproc)
-          lcov --capture --directory . --output-file coverage.info --rc branch_coverage=1 --filter branch --ignore-errors gcov,inconsistent,mismatch
-          lcov --remove coverage.info '/usr/*' '*/tests/*' --output-file coverage.info --rc branch_coverage=1
-          genhtml coverage.info -t "QuasiPiler Coverage Report" --demangle-cpp --branch-coverage  --output-directory ../cov
-          
       - name: Upload results to Codecov
         uses: codecov/codecov-action@v5
         with:
           fail_ci_if_error: true
+          disable_search: true
           files: build/coverage.info
           flags: unittests
           name: codecov-umbrella

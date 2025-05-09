@@ -96,19 +96,82 @@ if (BUILD_TESTS)
     endif ()
 
     if (COVERAGE)
-        if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-            message(STATUS "Enabling coverage reporting")
-            target_compile_options(qpiler_lib PUBLIC --coverage -O0)
-            target_link_libraries(qpiler_lib gcov)
-            target_compile_options(unit_tests PUBLIC --coverage -O0)
-            target_link_libraries(unit_tests gcov)
+        message(STATUS "Coverage: ON, compiler is ${CMAKE_CXX_COMPILER_ID}")
+
+        if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            set(COV_FLAGS --coverage -O0)
+            foreach (tgt IN ITEMS qpiler_lib unit_tests)
+                target_compile_options(${tgt} PUBLIC ${COV_FLAGS})
+                target_link_libraries(${tgt} PUBLIC gcov)
+            endforeach ()
+
+            # custom target to run gcov/lcov
+            find_program(LCOV lcov)
+            find_program(GENHTML genhtml)
+            add_custom_target(coverage
+                    COMMENT "Generating GCC/gcov coverage report"
+                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                    COMMAND ${CMAKE_COMMAND} --build . --target unit_tests
+                    COMMAND unit_tests
+                    COMMAND ${LCOV} --capture --directory . --output-file coverage.info
+                    COMMAND ${GENHTML} coverage.info --output-directory coverage_report
+                    DEPENDS unit_tests
+            )
+
+        elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set(COV_FLAGS
+                    -fprofile-instr-generate
+                    -fcoverage-mapping
+                    -O0
+            )
+            set(PROFRAW_FILE "${CMAKE_BINARY_DIR}/${PROJECT_NAME}.profraw")
+            set(PROFDATA_FILE "${CMAKE_BINARY_DIR}/${PROJECT_NAME}.profdata")
+            set(COVERAGE_REPORT_DIR "${CMAKE_BINARY_DIR}/../cov")
+
+            foreach (tgt IN ITEMS qpiler_lib unit_tests)
+                target_compile_options(${tgt} PUBLIC ${COV_FLAGS})
+                target_link_options(${tgt} PUBLIC -fprofile-instr-generate)
+            endforeach ()
+
+
+            find_program(LLVM_PROFDATA llvm-profdata)
+            find_program(LLVM_COV llvm-cov)
+            add_custom_target(coverage
+                    BYPRODUCTS ${PROFRAW_FILE} ${PROFDATA_FILE}
+                    COMMENT "Generating Clang/LLVM-cov coverage report"
+                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                    COMMAND ${CMAKE_COMMAND} --build . --target unit_tests
+                    COMMAND LLVM_PROFILE_FILE=${PROFRAW_FILE} $<TARGET_FILE:unit_tests>
+                    COMMAND ${LLVM_PROFDATA} merge -sparse -output=${PROFDATA_FILE} ${PROFRAW_FILE}
+                    COMMAND ${LLVM_COV} show $<TARGET_FILE:unit_tests>
+                    -instr-profile=${PROFDATA_FILE}
+                    -format=html
+                    -output-dir=${COVERAGE_REPORT_DIR}
+                    -ignore-filename-regex='.*/tests/.*'
+                    -show-branches=count
+                    -show-line-counts
+                    -show-regions
+                    -show-instantiations
+                    -show-expansions
+                    -use-color
+                    -coverage-watermark=90,60
+                    COMMAND ${LLVM_COV} export $<TARGET_FILE:unit_tests>
+                    -instr-profile=${PROFDATA_FILE}
+                    -format=lcov
+                    -ignore-filename-regex='.*/tests/.*' > ${CMAKE_BINARY_DIR}/coverage.info
+                    DEPENDS unit_tests qpiler_lib
+            )
         else ()
-            message(WARNING "Coverage is only supported with GCC or Clang compilers")
+            message(WARNING "Coverage is only supported with GCC or Clang")
         endif ()
     endif ()
+
 endif ()
 
-#if (BUILD_TESTS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-#    target_compile_options(unit_tests PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
-#    target_link_options(unit_tests PRIVATE -fsanitize=address)
-#endif()
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+
+if (BUILD_TESTS AND ENABLE_ASAN)
+    message(STATUS "AddressSanitizer ENABLED for unit_tests")
+    target_compile_options(unit_tests PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
+    target_link_options(unit_tests PRIVATE -fsanitize=address)
+endif()
